@@ -13,6 +13,7 @@
     "@ar-js-org/ar.js": "^3.4.7",
     "aframe": "^1.7.1",
     "react": "^19.1.1",
+    "react-aframe-ar": "^1.18.0",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
