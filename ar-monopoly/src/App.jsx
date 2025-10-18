@@ -4,7 +4,9 @@ export default function App() {
       <h2> React AR JS </h2>
       <div>
         <a-scene
-          arjs="debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; sourceType: webcam;" >
+          arjs="debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; sourceType: webcam; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080; trackingMethod: best; minConfidence: 0.0001;"
+
+          renderer="antialias: true; precision: medium; colorManagement: true; ">
 
           {/* </a-marker> */}
           <a-marker preset="hiro">
@@ -15,14 +17,16 @@ export default function App() {
             ></a-box>
           </a-marker>
 
-          <a-marker type="barcode" value="32">
-            <a-box
-              color="#FF0000"
-              material="opacity:0.5"
-            // animation="property:rotation; from:0 0 0; to:0 360 0; dur:2000; loop:true; dir: alternate;"
-            ></a-box>
-            {/* <a-entity position="0 0 0" rotation="0 0 0" scale="0.10 0.10 0.10" gltf-model="/models/tree.gltf"></a-entity> */}
+          <a-marker type="barcode" value="30" emitevents="true"
+            arjs-anchor="changeMatrixMode: modelViewMatrix;">
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/refs/heads/main/2.0/Duck/glTF/Duck.gltf)"
+              scale="1 1 1 " ></a-entity>
           </a-marker>
+
+
+
+
 
           <a-entity camera>
 
