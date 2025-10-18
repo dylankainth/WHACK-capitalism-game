@@ -1,20 +1,39 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-  <title>ar-monopoly</title>
+  <meta charset="UTF-8">
+  <title>AR.js 3D Model on Marker</title>
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://jeromeetienne.github.io/AR.js/aframe/build/aframe-ar.js"></script>
 </head>
 
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+<body style="margin: 0; overflow: hidden;">
+  <a-scene embedded
+    arjs="sourceType: webcam; debugUIEnabled: false; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080;"
+    renderer="antialias: true; precision: medium; colorManagement: true;">
+    <a-marker preset="hiro">
+      <a-entity
+        gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+        scale="0.5 0.5 0.5"></a-entity>
+    </a-marker>
+
+    <a-marker type="barcode" value="3">
+      <a-entity
+        gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+        scale="0.5 0.5 0.5"></a-entity>
+    </a-marker>
+
+
+    <a-marker type="pattern" preset="custom" url="pattern.patt">
+      <a-entity
+        gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+        scale="0.5 0.5 0.5"></a-entity>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
 </body>
 
 </html>
