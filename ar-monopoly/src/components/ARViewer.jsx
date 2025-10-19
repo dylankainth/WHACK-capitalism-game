@@ -31,27 +31,52 @@ export default function App() {
       transparent: true,
     });
     const plane = new THREE.Mesh(geometry, material);
+    plane.visible = false;
     planeRef.current = plane;
 
-    // Create debug line for p32->p38 (bottom edge)
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
-    const lineGeometry = new THREE.BufferGeometry();
-    const debugLine = new THREE.Line(lineGeometry, lineMaterial);
+    // Create debug lines
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 10 });
+
+    const debugLine = new THREE.Line(new THREE.BufferGeometry(), lineMaterial);
+    debugLine.visible = false;
+    debugLine.frustumCulled = false;
+    const linePositions = new Float32Array(6);
+    debugLine.geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+
+    const verticalLine = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    verticalLine.visible = false;
+    verticalLine.frustumCulled = false;
+    const verticalPositions = new Float32Array(6);
+    verticalLine.geometry.setAttribute('position', new THREE.BufferAttribute(verticalPositions, 3));
+
+    const normalLine = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    normalLine.visible = false;
+    normalLine.frustumCulled = false;
+    const normalPositions = new Float32Array(6);
+    normalLine.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions, 3));
 
     // Add plane and line to the A-Frame scene
     scene.object3D.add(plane);
     scene.object3D.add(debugLine);
+    scene.object3D.add(verticalLine);
+    scene.object3D.add(normalLine);
 
     // Update function called each frame
     const updatePlane = () => {
       const allVisible = markers.every((m) => m && m.object3D.visible);
       if (!allVisible) {
         plane.visible = false;
+        debugLine.visible = false;
+        verticalLine.visible = false;
+        normalLine.visible = false;
         requestAnimationFrame(updatePlane);
         return;
       }
 
       plane.visible = true;
+      debugLine.visible = true;
+      verticalLine.visible = true;
+      normalLine.visible = true;
 
       const [marker32, marker34, marker36, marker38] = markers;
       const p32 = new THREE.Vector3().setFromMatrixPosition(marker32.object3D.matrixWorld);
@@ -59,18 +84,36 @@ export default function App() {
       const p36 = new THREE.Vector3().setFromMatrixPosition(marker36.object3D.matrixWorld);
       const p38 = new THREE.Vector3().setFromMatrixPosition(marker38.object3D.matrixWorld);
 
-      console.log("Marker positions:", { p32, p34, p36, p38 });
+
       // Corner layout: 34 (top-left), 36 (top-right), 38 (bottom-left), 32 (bottom-right)
-      const xDir = new THREE.Vector3().subVectors(p36, p34); // top edge direction from left to right
-      const yDir = new THREE.Vector3().subVectors(p36, p32); // left edge direction from top to bottom
+      // Calculate all 4 edge vectors going around the quadrilateral
+      const edge1 = new THREE.Vector3().subVectors(p36, p34); // top edge: 34 -> 36
+      const edge2 = new THREE.Vector3().subVectors(p32, p36); // right edge: 36 -> 32
+      const edge3 = new THREE.Vector3().subVectors(p38, p32); // bottom edge: 32 -> 38
+      const edge4 = new THREE.Vector3().subVectors(p34, p38); // left edge: 38 -> 34
 
-      const topWidth = xDir.length();
-      const bottomWidth = new THREE.Vector3().subVectors(p32, p38).length();
-      const leftHeight = yDir.length();
-      const rightHeight = new THREE.Vector3().subVectors(p36, p32).length();
+      // Calculate the normal at each corner by taking cross product of adjacent edges
+      // For an up-facing normal, we cross the "incoming" edge with the "outgoing" edge
+      const normal1 = new THREE.Vector3().crossVectors(edge4, edge1).normalize(); // at p34
+      const normal2 = new THREE.Vector3().crossVectors(edge1, edge2).normalize(); // at p36
+      const normal3 = new THREE.Vector3().crossVectors(edge2, edge3).normalize(); // at p32
+      const normal4 = new THREE.Vector3().crossVectors(edge3, edge4).normalize(); // at p38
 
-      const width = (topWidth + bottomWidth) / 2;
-      const height = (leftHeight + rightHeight) / 2;
+      // Average all four normals to get a robust average normal
+      const normal = new THREE.Vector3()
+        .add(normal1)
+        .add(normal2)
+        .add(normal3)
+        .add(normal4)
+        .multiplyScalar(0.25)
+        .normalize();
+
+      // Use the first two edges for our main X and Y directions
+      const xDir = edge1; // top edge direction from left to right
+      const yDir = new THREE.Vector3().subVectors(p38, p34); // left edge direction from top to bottom
+
+      const width = xDir.length();
+      const height = yDir.length();
 
       if (width === 0 || height === 0) {
         requestAnimationFrame(updatePlane);
@@ -78,38 +121,70 @@ export default function App() {
       }
 
       const xAxis = xDir.clone().normalize();
-      const yAxis = yDir.clone().normalize();
+      let yAxis = yDir.clone().normalize();
 
       // Ensure orthogonality by removing any component of y along x
       const projection = xAxis.clone().multiplyScalar(yAxis.dot(xAxis));
       yAxis.sub(projection).normalize();
 
-      let normal = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
-      if (normal.y < 0) {
-        normal = normal.negate();
+      if (yAxis.dot(yDir) < 0) {
         yAxis.negate();
       }
 
-      const center = p32.clone().add(p34).add(p36).add(p38).multiplyScalar(0.25);
-      // Offset the plane down slightly so it sits on the board surface rather than floating above markers
-      center.add(normal.clone().multiplyScalar(-0.01)); // Move 1cm down along the normal
+      const center = p34.clone()
+        .addScaledVector(xAxis, width * 0.5)
+        .addScaledVector(yAxis, height * 0.5);
+      // Offset the plane slightly along the normal so it sits on the board surface
+      // center.add(normal.clone().multiplyScalar(0.01));
       plane.position.copy(center);
 
       const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, normal);
       plane.setRotationFromMatrix(basis);
 
       // Plane geometry spans 1x1 by default; scale to match board dimensions
-      plane.scale.set(width, height, 1.3);
+      plane.scale.set(width, height, 1);
 
-      // Update debug line: p32->p38 (bottom edge)
-      const linePoints = new Float32Array([
-        p32.x, p32.y, p32.z,  // start at p32 (bottom-right)
-        p38.x, p38.y, p38.z   // end at p38 (bottom-left)
-      ]);
-      debugLine.geometry.setAttribute('position', new THREE.BufferAttribute(linePoints, 3));
+      // Update debug line: p34 -> p36 (top edge)
+      linePositions[0] = p34.x;
+      linePositions[1] = p34.y;
+      linePositions[2] = p34.z;
+      linePositions[3] = p36.x;
+      linePositions[4] = p36.y;
+      linePositions[5] = p36.z;
+      debugLine.geometry.attributes.position.needsUpdate = true; // Tell Three.js to update the geometry
+      debugLine.geometry.computeBoundingSphere();
 
       // set the line colour to red
       debugLine.material.color.set(0xff0000);
+
+      // Update vertical debug line: p34 -> p38 (left edge)
+      verticalPositions[0] = p34.x;
+      verticalPositions[1] = p34.y;
+      verticalPositions[2] = p34.z;
+      verticalPositions[3] = p38.x;
+      verticalPositions[4] = p38.y;
+      verticalPositions[5] = p38.z;
+      verticalLine.geometry.attributes.position.needsUpdate = true;
+      verticalLine.geometry.computeBoundingSphere();
+
+      verticalLine.material.color.set(0x00ff00);
+
+      // Update normal debug line: p34 -> p34 + normal (orthogonal to red and green)
+      const normalLength = Math.min(width, height) * 0.5;
+      const normalEnd = p34.clone().addScaledVector(normal, normalLength);
+      normalPositions[0] = p34.x;
+      normalPositions[1] = p34.y;
+      normalPositions[2] = p34.z;
+      normalPositions[3] = normalEnd.x;
+      normalPositions[4] = normalEnd.y;
+      normalPositions[5] = normalEnd.z;
+      normalLine.geometry.attributes.position.needsUpdate = true;
+      normalLine.geometry.computeBoundingSphere();
+
+      normalLine.material.color.set(0x0000ff);
+
+
+
 
 
 
@@ -125,7 +200,9 @@ export default function App() {
     <div>
       <a-scene
         ref={sceneRef}
-        arjs="debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; sourceType: webcam; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080; trackingMethod: best;"
+        arjs="debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; sourceType: webcam; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080; trackingMethod: best; patternRatio: 0.4; minConfidence: 0.2; canvasWidth: 1080;
+canvasHeight: 1920;
+"
 
         renderer="antialias: true; precision: medium; colorManagement: true; ">
 
