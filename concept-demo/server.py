@@ -1,24 +1,72 @@
 import json
+import math
 from flask import Flask
 from flask import request, jsonify
+
 
 # pure function
 def supermarket_buy_food(db, player_id):
     supermarket = db.find_player_by_name(SUPER_MARKET_NAME)
     current_turn = db.get_player(player_id).turns
-    db.add_transaction(Transaction.new(db.id_gen, 10, player_id, supermarket.id, "buy food", current_turn, 0, 0))
+    cost = 50
+    score = cost * 0.001
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, supermarket.id, "buy food", current_turn, score, 0))
+
+
+def supermarket_part_time(db, player_id):
+    supermarket = db.find_player_by_name(SUPER_MARKET_NAME)
+    current_turn = db.get_player(player_id).turns
+    db.add_long_term(LongTerm.new(db.id_gen, player_id, supermarket.id, current_turn, current_turn + 5, "super market part time", 150, 0, 0, 0))
 
 
 # pure function
 def computer_shop_buy_computer(db, player_id):
     computer_shop = db.find_player_by_name(COMPUTER_SHOP_NAME)
     current_turn = db.get_player(player_id).turns
-    db.add_transaction(Transaction.new(db.id_gen, 200, player_id, computer_shop.id, "buy computer", current_turn, 0, 0))
+    cost = 200
+    score = cost * 0.001
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, computer_shop.id, "buy computer", current_turn, score, 0))
+
+# pure function
+def rent(db, player_id):
+    accom = db.find_player_by_name(ACCOM_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 1000
+    score = cost * 0.004
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, accom.id, "pay rent", current_turn, score, 0))
+
+
+def income_tax(db, player_id):
+    gov = db.find_player_by_name(GOV_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 200
+    score = 0
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, gov.id, "pay income tax", current_turn, score, 0))
+
+
+def pay_utility_bill(db, player_id):
+    utility = db.find_player_by_name(UTILITY_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 50
+    score = cost * 0.001
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, utility.id, "pay utility bill", current_turn, score, 0))
+
+
+def pay_medical_bill(db, player_id):
+    medical = db.find_player_by_name(HOSPITAL_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 100
+    score = 0
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, medical.id, "pay medical bill", current_turn, score, 0))
 
 
 FAKE_FUNCTION_POINTERS = {
     "supermarket_buy_food": supermarket_buy_food,
+    "supermarket_part_time": supermarket_part_time,
     "computer_shop_buy_computer": computer_shop_buy_computer,
+    "rent": rent,
+    "income_tax": income_tax,
+    "pay_utility_bill": pay_utility_bill,
     "do_nothing": lambda db, player_id: None,
 }
 
@@ -122,6 +170,39 @@ class Location:
         return Location(obj["idx"], obj["name"], [Action.json_decode(a) for a in obj["actions"]])
 
 
+class LongTerm:
+    def __init__(self, id, receiver_id, sender_id, start_turn, end_turn, desc, amount, interest_rate, sender_score, receiver_score):
+        self.amount = amount
+        self.start_turn = start_turn
+        self.end_turn = end_turn
+        self.desc = desc
+        self.receiver_id = receiver_id
+        self.sender_id = sender_id
+        self.interest_rate = interest_rate
+        self.sender_score = sender_score
+        self.receiver_score = receiver_score
+        self.id = id
+
+    def new(id_gen, receiver_id, sender_id, start_turn, end_turn, desc, amount, interest_rate, sender_score, receiver_score):
+        id = id_gen.debt_id_generator
+        id_gen.debt_id_generator += 1
+
+        return LongTerm(id, receiver_id, sender_id, start_turn, end_turn, desc, amount, interest_rate, sender_score, receiver_score)
+
+    def json_encode(self):
+        return json.dumps(self.__dict__)
+
+    def json_decode(obj):
+        return LongTerm(**obj)
+
+    def expired(self, db):
+        return db.get_player(self.receiver_id).turns > self.end_turn
+
+    def add_interest_and_transaction(self, db):
+        self.amount += int(self.amount * self.interest_rate)
+        return Transaction.new(db.id_gen, self.amount, self.sender_id, self.receiver_id, self.desc, db.get_player(self.receiver_id).turns, self.sender_score, self.receiver_score)
+
+
 # pure debt data, can be stored on supabase
 class Debt:
     
@@ -148,7 +229,7 @@ class Debt:
     # can be endpoint
     def score_impact(self, db):
         elapsed_turns = db.get_player(self.debtee_id).turns - self.start_turn
-        impact = int(-elapsed_turns * self.amount * 0.1)
+        impact = int(-elapsed_turns * self.amount * 0.0001)
         return impact
 
     # can be endpoint
@@ -170,6 +251,7 @@ class Database:
             Location(i, "Empty", []) for i in range(size)
         ]
         self.debts = []
+        self.long_terms = []
 
     # can be endpoint, but used only in game init
     def set_location(self, idx, location):
@@ -216,19 +298,33 @@ class Database:
     def get_player_debts(self, player_id):
         return [d for d in self.debts if d.debtee_id == player_id]
 
+    def add_long_term(self, long_term):
+        self.long_terms.append(long_term)
+
+    def get_long_term(self, id):
+        for long_term in self.long_terms:
+            if long_term.id == id:
+                return long_term
+        return None
+
+    def get_player_long_terms(self, player_id):
+        return [d for d in self.long_terms if d.receiver_id == player_id]
+
     # can be endpoint
     def borrow_debt(self, player_id, amount):
         bank = self.find_player_by_name(BANK_NAME)
         current_turn = self.get_player(player_id).turns
+        score = amount * 0.001
         self.add_debt(Debt.new(self.id_gen, player_id, current_turn, amount, 0.05, bank.id))
-        self.add_transaction(Transaction.new(self.id_gen, amount, bank.id, player_id, "borrow", current_turn, 0, -10))
+        self.add_transaction(Transaction.new(self.id_gen, amount, bank.id, player_id, "borrow", current_turn, 0, -score))
 
     # can be endpoint
     def repay_debt(self, debt_id, debtee_id, amount):
         bank = self.find_player_by_name(BANK_NAME)
         debt = self.get_debt(debt_id)
         current_turn = self.get_player(debtee_id).turns
-        self.add_transaction(Transaction.new(self.id_gen, amount, debtee_id, bank.id, "repay debt", current_turn, 0, 0))
+        score = amount * 0.001
+        self.add_transaction(Transaction.new(self.id_gen, amount, debtee_id, bank.id, "repay debt", current_turn, 0, score))
         debt.repay(amount)
 
     # can be endpoint
@@ -254,17 +350,33 @@ class Database:
 
     # can be endpoint
     def player_score(self, id):
-        score = 100  # initial credit score
+        sum = 0  # initial credit score
         # transactions
         for t in self.transactions:
             if t.sender_id == id:
-                score += t.base_from_score
+                sum += t.base_from_score
             if t.reciever_id == id:
-                score += t.base_to_score
+                sum += t.base_to_score
+            
+            time_elapsed = self.get_player(id).turns - int(t.turn)
+            weight = 0.0001 * time_elapsed # 15 * 0.0001 = 0.0015
+            sum += weight * t.payment
+            print(f"transactions: {t.desc}, {sum}")
         # debts
         for d in self.get_player_debts(id):
-            score += d.score_impact(self)
-        return score
+            sum += d.score_impact(self)
+            print(f"debt: {sum}")
+
+        for l in self.get_player_long_terms(id):
+            sum += l.receiver_score
+            print(f"long term: {sum}")
+
+        bias = -4
+        sum += bias
+        sigmoid_num = 1 / (1 + math.exp(-sum))
+        credit_score = sigmoid_num * 500 + 150
+        print(sum, credit_score)
+        return credit_score
 
     # can be endpoint
     def player_money(self, id):
@@ -280,6 +392,28 @@ class Database:
     def player_advance_turn(self, player_id):
         player = self.get_player(player_id)
         player.turns += 1
+        if player.turns % 4 == 0:
+            self.four_turner(player_id)
+
+    # can be endpoint
+    def four_turner(self, player_id):
+        player = self.get_player(player_id)
+
+        # interest calculator
+        money = self.player_money(player.id)
+        interest = int(money * player.interest_rate)
+        bank = self.find_player_by_name(BANK_NAME)
+        self.add_transaction(Transaction.new(self.id_gen, interest, bank.id, player.id, "interest", player.turns, 0, 0))
+        
+        # process debt history
+        for d in self.get_player_debts(player.id):
+            d.add_interest()
+
+        for l in self.get_player_long_terms(player.id):
+            if l.expired(self):
+                self.long_terms.remove(l)
+            transaction = l.add_interest_and_transaction(self)
+            self.add_transaction(transaction)
 
     # can be endpoint, returning json
     def player_bank_statement(self, player_id):
@@ -288,24 +422,15 @@ class Database:
         # money and credit score
         money = self.player_money(player.id)
 
-        # interest calculator
-        interest = int(money * player.interest_rate)
-        bank = self.find_player_by_name(BANK_NAME)
-        self.add_transaction(Transaction.new(self.id_gen, interest, bank.id, player.id, "interest", player.turns, 0, 0))
-
         # credit score
         score = self.player_score(player.id)
 
-        # process debt history
-        for d in self.get_player_debts(player.id):
-            d.add_interest()
-
         data = {
             "player_id": player.id,
-            "interest": interest,
             "money": money,
             "credit_score": score,
             "debts": self.get_player_debts(player.id),
+            "long_terms": self.get_player_long_terms(player.id),
             "transactions": [t for t in self.transactions if t.sender_id == player.id or t.reciever_id == player.id],
         }
 
@@ -318,10 +443,20 @@ def new_game():
     _bank = Player.new(id_gen, BANK_NAME)
     _supermarket = Player.new(id_gen, SUPER_MARKET_NAME)
     _computer_shop = Player.new(id_gen, COMPUTER_SHOP_NAME)
+    _government = Player.new(id_gen, GOV_NAME)
+    __utility = Player.new(id_gen, UTILITY_NAME)
+    __hospital = Player.new(id_gen, HOSPITAL_NAME)
+    __housing = Player.new(id_gen, HOUSING_NAME)
+    _accom = Player.new(id_gen, ACCOM_NAME)
     db = Database(id_gen, 24)
     db.add_player(_bank)
     db.add_player(_supermarket)
     db.add_player(_computer_shop)
+    db.add_player(_government)
+    db.add_player(__utility)
+    db.add_player(__hospital)
+    db.add_player(__housing)
+    db.add_player(_accom)
 
     ACTION_DO_NOTHING = Action("do nothing", "do_nothing")
 
@@ -333,28 +468,68 @@ def new_game():
     for i in range(24):
         db.set_location(i, Location(i, "Boring Place", default_actions()))
 
+    db.set_location(1, Location(
+        1,
+        "Accomodation",
+        [
+            Action("buy accomodation (1000 pounds)", "rent"),
+        ]
+    ))
     db.set_location(10, Location(
         10,
         "Supermarket",
         [
-            Action("buy food (10 pounds)", "supermarket_buy_food"),
+            Action("buy food (50 pounds)", "supermarket_buy_food"),
+            Action("part time (150 pounds)", "supermarket_part_time"),
         ] + default_actions()
     ))
-
+    db.set_location(12, Location(
+        12,
+        "Utility Company",
+        [
+            Action("pay utility bill(50 pounds)", "pay_utility_bill"),
+        ]
+    ))
+    db.set_location(14, Location(
+        14,
+        "Gov",
+        [
+            Action("pay income tax", "income_tax"),
+        ]
+    ))
+    db.set_location(16, Location(
+        16,
+        "Medical Company",
+        [
+            Action("pay medical bill(100 pounds)", "pay_medical_bill"),
+        ]
+    ))
+    # db.set_location(18, Location(
+    #     18,
+    #     "Housing Company",
+    #     [
+    #         Action("purchase property, (500 pounds mortgage)", "pay_mortgage"),
+    #     ] + default_actions()
+    # ))
     db.set_location(20, Location(
         20,
         "Computer Shop",
         [
             Action("buy computer (200 pounds)", "computer_shop_buy_computer"),
         ] + default_actions()
+        
     ))
-
     return db
 
 
 BANK_NAME = "__Bank"
 SUPER_MARKET_NAME = "__Super Market"
 COMPUTER_SHOP_NAME = "__Computer Shop"
+GOV_NAME = "__Government"
+UTILITY_NAME = "__Utility Company"
+HOSPITAL_NAME = "__Medical Company"
+HOUSING_NAME = "__Housing Company"
+ACCOM_NAME = "__Accomodation"
 
 # server
 app = Flask(__name__)

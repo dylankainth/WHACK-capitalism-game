@@ -60,7 +60,7 @@ while True:
             "desc": "paycheck",
             "turn": p1["turns"],
             "base_from_score": 0,
-            "base_to_score": 10
+            "base_to_score": 0
         }
         requests.post(f"{BASE_URL}/{SESSION}/add_transaction", json=transaction)
 
@@ -89,9 +89,6 @@ while True:
             print(f"player: {p1['name']}'s BANK STATEMENT")
             print(f"money (post interest): {statement['money']}")
 
-            print("=== interest ===")
-            print(f"interest: {statement['interest']}")
-
             print("=== credit score ===")
             print(f"credit score: {statement['credit_score']}")
 
@@ -103,7 +100,7 @@ while True:
             for t in statement["transactions"]:
                 if t["sender_id"] == p1["id"]:
                     receiver = requests.post(f"{BASE_URL}/{SESSION}/get_player", json={"id": t["reciever_id"]}).json()
-                    print(f"sent {t['payment']} to {receiver['name']}: {t['desc']}")
+                    print(f"paid {t['payment']} to {receiver['name']}: {t['desc']}")
                 elif t["reciever_id"] == p1["id"]:
                     sender = requests.post(f"{BASE_URL}/{SESSION}/get_player", json={"id": t["sender_id"]}).json()
                     print(f"received {t['payment']} from {sender['name']}: {t['desc']}")
