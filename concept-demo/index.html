@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WHACKMOPOLY</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 1em; }
+    #console { white-space: pre-wrap; background: #eee; padding: 1em; height: 300px; overflow-y: auto; margin-bottom: 1em; }
+    .input-area { margin: 1em 0; }
+    .input-area input, .input-area button, .input-area select { margin-right: 10px; }
+
+    .screen {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="screen">
+      <div id="left">
+        <h1>WHACKMOPOLY console</h1>
+        <div id="console"></div>
+
+        <div class="input-area" id="controls">
+          <!-- dynamic controls go here -->
+        </div>
+      </div>
+      <div id="right"></div>
+    </div>
+  <script>
+    const BASE_URL = "http://localhost:5000";
+    const SESSION = "testsession";
+
+    const consoleDiv = document.getElementById('console');
+    const controlsDiv = document.getElementById('controls');
+    const rightDiv = document.getElementById('right');
+
+
+    let players = [];
+    let currentPlayerIndex = 0;
+
+    function log(msg) {
+      consoleDiv.innerText += msg + '\n';
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    async function api(path, method = 'GET', body = null) {
+      const res = await fetch(`${BASE_URL}/${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      return await res.json();
+    }
+
+    async function init() {
+      log("Initializing session...");
+      await api(`${SESSION}/new`);
+
+      const p1 = await api(`${SESSION}/add_player`, 'POST', { name: 'Player 1' });
+      const p2 = await api(`${SESSION}/add_player`, 'POST', { name: 'Player 2' });
+      players = [p1, p2];
+
+      log("Players created:");
+      log(`- ${p1.name}`);
+      log(`- ${p2.name}`);
+
+      runGameLoop();
+    }
+
+    async function runGameLoop() {
+      const player = await api(`${SESSION}/get_player`, 'POST', { id: players[currentPlayerIndex].id });
+      players[currentPlayerIndex] = player;
+      log(`\n=== ${player.name}'s turn ===`);
+
+      showActions(player);
+    }
+
+    function showActions(player) {
+      controlsDiv.innerHTML = '';
+
+      const actions = [
+        { id: 1, text: 'Repay debt' },
+        { id: 2, text: 'Get paycheck (100)' },
+        { id: 3, text: 'Show transaction log' },
+        { id: 4, text: 'Move number' },
+        { id: 6, text: 'Move random spaces' },
+        { id: 5, text: 'Borrow loan' }
+      ];
+
+      actions.forEach(act => {
+        const btn = document.createElement('button');
+        btn.innerText = act.text;
+        btn.onclick = () => handleAction(act.id, player);
+        controlsDiv.appendChild(btn);
+      });
+    }
+
+    async function handleAction(actionId, player) {
+      if (actionId === 1) {
+        const debts = await api(`${SESSION}/get_player_debts`, 'POST', { player_id: player.id });
+        const activeDebts = debts.filter(d => d.amount > 0);
+
+        if (activeDebts.length === 0) {
+          log("No debts to repay.");
+          return endTurn(player);
+        }
+
+        controlsDiv.innerHTML = '';
+        log("Choose a debt to repay:");
+        activeDebts.forEach((d, idx) => {
+          const btn = document.createElement('button');
+          btn.innerText = `${idx + 1}) ${d.amount}`;
+          btn.onclick = () => {
+            controlsDiv.innerHTML = '';
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.placeholder = 'Repay amount';
+            const submit = document.createElement('button');
+            submit.innerText = 'Repay';
+            submit.onclick = async () => {
+              const amount = Math.min(parseInt(input.value), d.amount);
+              await api(`${SESSION}/repay_debt`, 'POST', {
+                debt_id: d.id,
+                debtee_id: player.id,
+                amount: amount
+              });
+              log(`Repaid ${amount}`);
+              endTurn(player);
+            };
+            controlsDiv.appendChild(input);
+            controlsDiv.appendChild(submit);
+          };
+          controlsDiv.appendChild(btn);
+        });
+
+      } else if (actionId === 2) {
+        const bank = await api(`${SESSION}/find_player_by_name`, 'POST', { name: '__Bank' });
+        await api(`${SESSION}/add_transaction`, 'POST', {
+          payment: 100,
+          sender_id: bank.id,
+          reciever_id: player.id,
+          desc: "paycheck",
+          turn: player.turns,
+          base_from_score: 0,
+          base_to_score: 0
+        });
+        log("Received paycheck.");
+        endTurn(player);
+
+      } else if (actionId === 3) {
+        const txs = await api(`${SESSION}/get_transactions`);
+        log("=== Transaction Log ===");
+        txs.forEach(t => log(JSON.stringify(t, null, 2)));
+        endTurn(player);
+
+      } else if (actionId === 4) {
+        controlsDiv.innerHTML = '';
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.placeholder = 'Enter move number';
+        const submit = document.createElement('button');
+        submit.innerText = 'Move';
+        submit.onclick = async () => {
+          const n = parseInt(input.value);
+          const passGo = player.location_idx + n >= 24;
+          const location = await api(`${SESSION}/move_player_rel`, 'POST', {
+            player_id: player.id,
+            n: n
+          });
+          if (location.name === "Medical Company") {
+            rightDiv.innerHTML = `<img src="images/hospital.png">`;
+          } else if (location.name == "Supermarket") {
+            rightDiv.innerHTML = `<img src="images/teto.png">`;
+          } else if (location.name === "NETFLEX subscription") {
+            rightDiv.innerHTML = `<img src="images/ne.png">`;
+          } else {
+            rightDiv.innerHTML = "";
+          }
+          log(`${player.name} moved to ${location.idx}: ${location.name}`);
+
+          if (passGo) {
+            const statement = await api(`${SESSION}/player_bank_statement`, 'POST', { player_id: player.id });
+            log(`=== ${player.name}'s BANK STATEMENT ===`);
+            log(`Money (post interest): ${statement.money}`);
+            log(`Credit Score: ${statement.credit_score}`);
+            log(`Debts:`);
+            statement.debts.forEach(d => log(`- ${d.amount} from ${d.loaner_id} to ${d.debtee_id}`));
+            log(`Transactions:`);
+            for (let t of statement.transactions) {
+              if (t.sender_id === player.id) {
+                const r = await api(`${SESSION}/get_player`, 'POST', { id: t.reciever_id });
+                log(`Paid ${t.payment} to ${r.name}: ${t.desc}`);
+              } else {
+                const s = await api(`${SESSION}/get_player`, 'POST', { id: t.sender_id });
+                log(`Received ${t.payment} from ${s.name}: ${t.desc}`);
+              }
+            }
+          }
+
+          if (location.actions.length > 0) {
+            controlsDiv.innerHTML = '';
+            log("Choose an action:");
+            location.actions.forEach((a, i) => {
+              const btn = document.createElement('button');
+              btn.innerText = `${i + 1}) ${a.desc}`;
+              btn.onclick = () => handleLocationAction(a.func, player);
+              controlsDiv.appendChild(btn);
+            });
+          } else {
+            endTurn(player);
+          }
+        };
+        controlsDiv.appendChild(input);
+        controlsDiv.appendChild(submit);
+
+      } else if (actionId === 5) {
+        controlsDiv.innerHTML = '';
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.placeholder = 'Amount to borrow';
+        const submit = document.createElement('button');
+        submit.innerText = 'Borrow';
+        submit.onclick = async () => {
+          await api(`${SESSION}/borrow_debt`, 'POST', {
+            player_id: player.id,
+            amount: parseInt(input.value)
+          });
+          log(`Borrowed ${input.value}`);
+          endTurn(player);
+        };
+        controlsDiv.appendChild(input);
+        controlsDiv.appendChild(submit);
+      } else if (actionId === 6) {
+        controlsDiv.innerHTML = '';
+        const n = parseInt(Math.floor(Math.random() * 7));
+        const passGo = player.location_idx + n >= 24;
+        const location = await api(`${SESSION}/move_player_rel`, 'POST', {
+          player_id: player.id,
+          n: n
+        });
+        if (location.name === "Medical Company") {
+          rightDiv.innerHTML = `<img src="images/hospital.png">`;
+        } else if (location.name == "Supermarket") {
+          rightDiv.innerHTML = `<img src="images/teto.png">`;
+        } else if (location.name === "NETFLEX subscription") {
+          rightDiv.innerHTML = `<img src="images/ne.png">`;
+        } else {
+          rightDiv.innerHTML = "";
+        }
+        log(`${player.name} moved to ${location.idx}: ${location.name}`);
+
+        if (passGo) {
+          const statement = await api(`${SESSION}/player_bank_statement`, 'POST', { player_id: player.id });
+          log(`=== ${player.name}'s BANK STATEMENT ===`);
+          log(`Money (post interest): ${statement.money}`);
+          log(`Credit Score: ${statement.credit_score}`);
+          log(`Debts:`);
+          statement.debts.forEach(d => log(`- ${d.amount} from ${d.loaner_id} to ${d.debtee_id}`));
+          log(`Transactions:`);
+          for (let t of statement.transactions) {
+            if (t.sender_id === player.id) {
+              const r = await api(`${SESSION}/get_player`, 'POST', { id: t.reciever_id });
+              log(`Paid ${t.payment} to ${r.name}: ${t.desc}`);
+            } else {
+              const s = await api(`${SESSION}/get_player`, 'POST', { id: t.sender_id });
+              log(`Received ${t.payment} from ${s.name}: ${t.desc}`);
+            }
+          }
+        }
+
+        if (location.actions.length > 0) {
+          controlsDiv.innerHTML = '';
+          log("Choose an action:");
+          location.actions.forEach((a, i) => {
+            const btn = document.createElement('button');
+            btn.innerText = `${i + 1}) ${a.desc}`;
+            btn.onclick = () => handleLocationAction(a.func, player);
+            controlsDiv.appendChild(btn);
+          });
+        } else {
+          endTurn(player);
+        }
+      }
+    }
+
+    async function handleLocationAction(func, player) {
+      if (func === 'scam_event') {
+        rightDiv.innerHTML = `<img src="images/mr.png">`
+        log(`
+Dear player,
+    today is your lucky day!
+    You have been selected by Mr. Monopoly to win $1000!
+    You only have this turn to make your decision! Choose wisely!
+
+What should you do?`);
+        controlsDiv.innerHTML = '';
+
+        const noBtn = document.createElement('button');
+        noBtn.innerText = 'No thank you.';
+        noBtn.onclick = () => {
+          log(`
+Congradulations! You have recognised a potential scam!
+
+WARNING: As broken as this may seem, real-life scams are very similar in style!
+Remember:
+- Nobody gives away free money unexpectedly
+- Legitimate organizations don't pressure you for immediate decisions
+- Always verify opportunities through official channels
+- Never share personal or financial information with strangers
+- If it sounds too good to be true, it probably is!
+`);
+          endTurn(player);
+        };
+
+        const yesBtn = document.createElement('button');
+        yesBtn.innerText = 'Claim prizes!';
+        yesBtn.onclick = async () => {
+          await api(`${SESSION}/run_action`, 'POST', {
+            action: "scammed_20",
+            player_id: player.id
+          });
+          log(`
+Boohoo! You have been scammed!
+
+WARNING: As broken as this may seem, real-life scams are very similar in style!
+Remember:
+- Nobody gives away free money unexpectedly
+- Legitimate organizations don't pressure you for immediate decisions
+- Always verify opportunities through official channels
+- Never share personal or financial information with strangers
+- If it sounds too good to be true, it probably is!
+`);
+          endTurn(player);
+        };
+
+        controlsDiv.appendChild(noBtn);
+        controlsDiv.appendChild(yesBtn);
+      } else {
+        await api(`${SESSION}/run_action`, 'POST', {
+          action: func,
+          player_id: player.id
+        });
+        endTurn(player);
+      }
+    }
+
+    async function endTurn(player) {
+      const money = await api(`${SESSION}/player_money`, 'POST', { id: player.id });
+      log(`${player.name} has money: ${money.money}`);
+      await api(`${SESSION}/player_advance_turn`, 'POST', { player_id: player.id });
+
+      currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+      runGameLoop();
+    }
+
+    // Start the game
+    init();
+  </script>
+</body>
+</html>
+

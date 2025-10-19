@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Literacy Game</title>
+    <style>
+        .game-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .player-turn {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .action-menu {
+            background-color: #fff;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .bank-statement {
+            background-color: #fff;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Game Status Display -->
+        <div id="status-display" class="player-turn">
+            <h2 id="current-player">Loading...</h2>
+            <p id="player-money">Money: Loading...</p>
+        </div>
+
+        <!-- Action Menu -->
+        <div id="action-menu" class="action-menu hidden">
+            <h3>Choose an action:</h3>
+            <div class="button-group">
+                <button onclick="handleAction(1)">Repay Debt</button>
+                <button onclick="handleAction(2)">Get Paycheck ($100)</button>
+                <button onclick="handleAction(3)">Show Transactions Log</button>
+                <button onclick="handleAction(4)">Move Number</button>
+                <button onclick="handleAction(5)">Borrow Debt</button>
+            </div>
+        </div>
+
+        <!-- Bank Statement Display -->
+        <div id="bank-statement" class="bank-statement hidden">
+            <h3>Bank Statement</h3>
+            <div id="statement-details"></div>
+        </div>
+
+        <!-- Error Messages -->
+        <div id="error-message" class="error-message hidden"></div>
+    </div>
+
+    <script>
+        const BASE_URL = "http://localhost:5000";
+        const SESSION = "testsession";
+        let currentPlayer = null;
+        let players = [];
+
+        // Initialize game
+        async function initializeGame() {
+            try {
+                await fetch(`${BASE_URL}/${SESSION}/new`, { method: 'GET' });
+                
+                // Add players
+                const playerPromises = [
+                    fetch(`${BASE_URL}/${SESSION}/add_player`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: "Player 1" })
+                    }),
+                    fetch(`${BASE_URL}/${SESSION}/add_player`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: "Player 2" })
+                    })
+                ];
+
+                players = await Promise.all([
+                    playerPromises[0].then(r => r.json()),
+                    playerPromises[1].then(r => r.json())
+                ]);
+
+                startGameLoop();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Main game loop
+        async function startGameLoop() {
+            for (let i = 0; i < players.length; i++) {
+                currentPlayer = players[i];
+                await handleTurn(currentPlayer);
+            }
+        }
+
+        // Handle individual player turn
+        async function handleTurn(player) {
+            try {
+                // Update display
+                document.getElementById('current-player').textContent = `${player.name}'s turn`;
+                document.getElementById('player-money').textContent = `Money: ${await getPlayerMoney(player.id)}`;
+                document.getElementById('action-menu').classList.remove('hidden');
+
+                // Wait for player action
+                const action = await waitForAction();
+
+                switch(action) {
+                    case 1:
+                        await handleDebtRepayment(player);
+                        break;
+                    case 2:
+                        await handlePaycheck(player);
+                        break;
+                    case 3:
+                        await showTransactionsLog();
+                        break;
+                    case 4:
+                        await handleMovement(player);
+                        break;
+                    case 5:
+                        await handleBorrowDebt(player);
+                        break;
+                }
+
+                // Advance turn
+                await advanceTurn(player.id);
+
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Action handlers
+        async function handleDebtRepayment(player) {
+            const debts = await getPlayerDebts(player.id);
+            const activeDebts = debts.filter(d => d.amount > 0);
+
+            if (activeDebts.length === 0) {
+                showMessage("No debts to repay");
+                return;
+            }
+
+            const debtIndex = await promptUser(`Select debt to repay:\n${activeDebts.map((d, i) => `${i + 1}) ${d.amount}`).join('\n')}`);
+            const amount = parseInt(await promptUser("Amount to repay:"));
+            
+            await fetch(`${BASE_URL}/${SESSION}/repay_debt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    debt_id: activeDebts[debtIndex - 1].id,
+                    debtee_id: player.id,
+                    amount: Math.min(amount, activeDebts[debtIndex - 1].amount)
+                })
+            });
+        }
+
+        async function handlePaycheck(player) {
+            const bank = await findPlayerByName("__Bank");
+            await fetch(`${BASE_URL}/${SESSION}/add_transaction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    payment: 100,
+                    sender_id: bank.id,
+                    reciever_id: player.id,
+                    desc: "paycheck",
+                    turn: player.turns,
+                    base_from_score: 0,
+                    base_to_score: 0
+                })
+            });
+        }
+
+        async function showTransactionsLog() {
+            const transactions = await fetchTransactions();
+            const statementDiv = document.getElementById('statement-details');
+            statementDiv.innerHTML = '<pre>' + JSON.stringify(transactions, null, 2) + '</pre>';
+            document.getElementById('bank-statement').classList.remove('hidden');
+        }
+
+        async function handleMovement(player) {
+            const spaces = parseInt(await promptUser("Enter number of spaces to move:"));
+            const location = await movePlayerRelative(player.id, spaces);
+            
+            if (location.actions.length > 0) {
+                const actionIndex = await promptUser(`Choose action:\n${location.actions.map((a, i) => `${i + 1}) ${a.desc}`).join('\n')}`);
+                
+                if (location.actions[actionIndex - 1].func === "scam_event") {
+                    const choice = await promptUser(`
+Dear player,
+today is your lucky day!
+You have been selected by Mr. Monopoly to win $1000!
+You only have this turn to make your decision! Choose wisely!
+
+What should you do?
+1) No thank you.
+2) Claim Prizes!!!
+`);
+                    
+                    if (choice !== "1") {
+                        await fetch(`${BASE_URL}/${SESSION}/run_action`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: "scammed_20",
+                                player_id: player.id
+                            })
+                        });
+                        
+                        showMessage(`
+Boohoo! You have been scammed!
+
+WARNING: As broken as this may seem, real-life scams are very similar in style!
+Remember:
+- Nobody gives away free money unexpectedly
+- Legitimate organizations don't pressure you for immediate decisions
+- Always verify opportunities through official channels
+- Never share personal or financial information with strangers
+- If it sounds too good to be true, it probably is!
+`);
+                    }
+                } else {
+                    await fetch(`${BASE_URL}/${SESSION}/run_action`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: location.actions[actionIndex - 1].func,
+                            player_id: player.id
+                        })
+                    });
+                }
+            }
+        }
+
+        async function handleBorrowDebt(player) {
+            const amount = parseInt(await promptUser("Amount to borrow:"));
+            await fetch(`${BASE_URL}/${SESSION}/borrow_debt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    player_id: player.id,
+                    amount: amount
+                })
+            });
+        }
+
+        // Helper functions
+        async function getPlayerMoney(playerId) {
+            const response = await fetch(`${BASE_URL}/${SESSION}/player_money`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: playerId })
+            });
+            return (await response.json()).money;
+        }
+           
+        // Helper functions (continued)
+        async function getPlayerDebts(playerId) {
+            const response = await fetch(`${BASE_URL}/${SESSION}/get_player_debts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId })
+            });
+            return await response.json();
+        }
+
+        async function fetchTransactions() {
+            const response = await fetch(`${BASE_URL}/${SESSION}/get_transactions`);
+            return await response.json();
+        }
+
+        async function movePlayerRelative(playerId, spaces) {
+            const response = await fetch(`${BASE_URL}/${SESSION}/move_player_rel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    player_id: playerId,
+                    n: spaces
+                })
+            });
+            return await response.json();
+        }
+
+        async function advanceTurn(playerId) {
+            await fetch(`${BASE_URL}/${SESSION}/player_advance_turn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: playerId })
+            });
+        }
+
+        function showMessage(message) {
+            const statusDisplay = document.getElementById('status-display');
+            statusDisplay.innerHTML += `<p>${message}</p>`;
+        }
+
+        function showError(error) {
+            const errorMessage = document.getElementById('error-message');
+            errorMessage.textContent = error;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // Initialize game when page loads
+        window.onload = initializeGame;
+        </script>
+    </body>
+</html>
