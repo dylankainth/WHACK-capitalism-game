@@ -27,6 +27,7 @@ def computer_shop_buy_computer(db, player_id):
     score = cost * 0.001
     db.add_transaction(Transaction.new(db.id_gen, cost, player_id, computer_shop.id, "buy computer", current_turn, score, 0))
 
+
 # pure function
 def rent(db, player_id):
     accom = db.find_player_by_name(ACCOM_NAME)
@@ -60,6 +61,20 @@ def pay_medical_bill(db, player_id):
     db.add_transaction(Transaction.new(db.id_gen, cost, player_id, medical.id, "pay medical bill", current_turn, score, 0))
 
 
+def get_netflex_subscription(db, player_id):
+    netflex = db.find_player_by_name(NETFLEX_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 20
+    db.add_long_term(LongTerm.new(db.id_gen, player_id, netflex.id, current_turn, current_turn + 5, "netflex subscription", -cost, 0, 0, 0))
+
+
+def scammed_20(db, player_id):
+    scammer = db.find_player_by_name(SCAMMER_NAME)
+    current_turn = db.get_player(player_id).turns
+    cost = 20
+    db.add_transaction(Transaction.new(db.id_gen, cost, player_id, scammer.id, "scammed", current_turn, 0, 0))
+
+
 FAKE_FUNCTION_POINTERS = {
     "supermarket_buy_food": supermarket_buy_food,
     "supermarket_part_time": supermarket_part_time,
@@ -67,6 +82,9 @@ FAKE_FUNCTION_POINTERS = {
     "rent": rent,
     "income_tax": income_tax,
     "pay_utility_bill": pay_utility_bill,
+    "pay_medical_bill": pay_medical_bill,
+    "get_netflex_subscription": get_netflex_subscription,
+    "scammed_20": scammed_20,
     "do_nothing": lambda db, player_id: None,
 }
 
@@ -444,19 +462,23 @@ def new_game():
     _supermarket = Player.new(id_gen, SUPER_MARKET_NAME)
     _computer_shop = Player.new(id_gen, COMPUTER_SHOP_NAME)
     _government = Player.new(id_gen, GOV_NAME)
-    __utility = Player.new(id_gen, UTILITY_NAME)
-    __hospital = Player.new(id_gen, HOSPITAL_NAME)
-    __housing = Player.new(id_gen, HOUSING_NAME)
+    _utility = Player.new(id_gen, UTILITY_NAME)
+    _hospital = Player.new(id_gen, HOSPITAL_NAME)
+    _housing = Player.new(id_gen, HOUSING_NAME)
     _accom = Player.new(id_gen, ACCOM_NAME)
+    _netflex = Player.new(id_gen, NETFLEX_NAME)
+    _scammer = Player.new(id_gen, SCAMMER_NAME)
     db = Database(id_gen, 24)
     db.add_player(_bank)
     db.add_player(_supermarket)
     db.add_player(_computer_shop)
     db.add_player(_government)
-    db.add_player(__utility)
-    db.add_player(__hospital)
-    db.add_player(__housing)
+    db.add_player(_utility)
+    db.add_player(_hospital)
+    db.add_player(_housing)
     db.add_player(_accom)
+    db.add_player(_netflex)
+    db.add_player(_scammer)
 
     ACTION_DO_NOTHING = Action("do nothing", "do_nothing")
 
@@ -472,8 +494,15 @@ def new_game():
         1,
         "Accomodation",
         [
-            Action("buy accomodation (1000 pounds)", "rent"),
+            Action("pay accomodation rent (1000 pounds)", "rent"),
         ]
+    ))
+    db.set_location(3, Location(
+        3,
+        "NETFLEX subscription",
+        [
+            Action("get netflex subscription (20 pounds)", "get_netflex_subscription"),
+        ] + default_actions()
     ))
     db.set_location(10, Location(
         10,
@@ -482,6 +511,13 @@ def new_game():
             Action("buy food (50 pounds)", "supermarket_buy_food"),
             Action("part time (150 pounds)", "supermarket_part_time"),
         ] + default_actions()
+    ))
+    db.set_location(11, Location(
+        11,
+        "Special Event",
+        [
+            Action("random event", "scam_event"),
+        ]
     ))
     db.set_location(12, Location(
         12,
@@ -530,6 +566,8 @@ UTILITY_NAME = "__Utility Company"
 HOSPITAL_NAME = "__Medical Company"
 HOUSING_NAME = "__Housing Company"
 ACCOM_NAME = "__Accomodation"
+NETFLEX_NAME = "__NETFLEX"
+SCAMMER_NAME = "__Scammer"
 
 # server
 app = Flask(__name__)
