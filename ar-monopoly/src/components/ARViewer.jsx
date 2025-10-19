@@ -20,12 +20,14 @@ export default function App() {
       document.querySelector("#marker38"),
     ];
 
-    // Create plane geometry and material
+    // Create plane geometry and material with texture
     const geometry = new THREE.PlaneGeometry(1, 1); // initial size, will scale
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('/board.png');
     const material = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
+      map: texture,
       side: THREE.DoubleSide,
-      opacity: 0.5,
+      opacity: 0.8,
       transparent: true,
     });
     const plane = new THREE.Mesh(geometry, material);
@@ -97,7 +99,7 @@ export default function App() {
       plane.setRotationFromMatrix(basis);
 
       // Plane geometry spans 1x1 by default; scale to match board dimensions
-      plane.scale.set(width, height, 1);
+      plane.scale.set(width, height, 1.3);
 
       // Update debug line: p32->p38 (bottom edge)
       const linePoints = new Float32Array([
