@@ -494,8 +494,8 @@ def new_game():
         1,
         "Accomodation",
         [
-            Action("buy accomodation (1000 pounds)", "rent"),
-        ] + default_actions()
+            Action("pay accomodation rent (1000 pounds)", "rent"),
+        ]
     ))
     db.set_location(3, Location(
         3,
