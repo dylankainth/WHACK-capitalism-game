@@ -48,7 +48,7 @@ enter action:
                 debt_idx = int(input("> ")) - 1
                 repay_amount = min(int(input("amount: ")), active_debts[debt_idx]["amount"])
                 requests.post(f"{BASE_URL}/{SESSION}/repay_debt", json={
-                    "debt_id": active_debts[debt_idx]["id"],
+    "debt_id": active_debts[debt_idx]["id"],
                     "debtee_id": player["id"],
                     "amount": repay_amount
                 })
@@ -117,10 +117,46 @@ enter action:
                     print(f"{i + 1}) {a['desc']}")
 
                 action_idx = int(input("> ")) - 1
-                requests.post(f"{BASE_URL}/{SESSION}/run_action", json={
-                    "action": actions[action_idx]["func"],
-                    "player_id": player["id"]
-                })
+
+                if actions[action_idx]["func"] == "scam_event":
+                    print("""
+Dear player,
+    today is your lucky day!
+    You have been selected by Mr. Monopoly to win $1000!
+    You only have this turn to make your decision! Choose wisely!
+
+What should you do?
+1) No thank you.
+2) Claim Prizes!!! <3 <3 <3
+                    """)
+                    choice = int(input("> "))
+                    if choice == 1:
+                        print("""
+Congradulations! You have recognised a potential scam!
+                        """)
+                    else:
+                        print("""
+Boohoo! You have been scammed!
+                        """)
+                        requests.post(f"{BASE_URL}/{SESSION}/run_action", json={
+                            "action": "scammed_20",
+                            "player_id": player["id"],
+                        })
+                    print("""
+WARNING: As broken as this may seem, real-life scams are very similar in style!
+Remember:
+- Nobody gives away free money unexpectedly
+- Legitimate organizations don't pressure you for immediate decisions
+- Always verify opportunities through official channels
+- Never share personal or financial information with strangers
+- If it sounds too good to be true, it probably is!
+                    """)
+
+                else:
+                    requests.post(f"{BASE_URL}/{SESSION}/run_action", json={
+                        "action": actions[action_idx]["func"],
+                        "player_id": player["id"]
+                    })
 
         elif action == 5:
             amount = int(input("amount: "))
