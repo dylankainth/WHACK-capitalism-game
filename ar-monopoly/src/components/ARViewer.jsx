@@ -55,11 +55,40 @@ export default function App() {
     const normalPositions = new Float32Array(6);
     normalLine.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions, 3));
 
+    // Create 4 normal lines, one at each corner
+    const normalLine1 = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    normalLine1.visible = false;
+    normalLine1.frustumCulled = false;
+    const normalPositions1 = new Float32Array(6);
+    normalLine1.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions1, 3));
+
+    const normalLine2 = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    normalLine2.visible = false;
+    normalLine2.frustumCulled = false;
+    const normalPositions2 = new Float32Array(6);
+    normalLine2.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions2, 3));
+
+    const normalLine3 = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    normalLine3.visible = false;
+    normalLine3.frustumCulled = false;
+    const normalPositions3 = new Float32Array(6);
+    normalLine3.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions3, 3));
+
+    const normalLine4 = new THREE.Line(new THREE.BufferGeometry(), lineMaterial.clone());
+    normalLine4.visible = false;
+    normalLine4.frustumCulled = false;
+    const normalPositions4 = new Float32Array(6);
+    normalLine4.geometry.setAttribute('position', new THREE.BufferAttribute(normalPositions4, 3));
+
     // Add plane and line to the A-Frame scene
     scene.object3D.add(plane);
     scene.object3D.add(debugLine);
     scene.object3D.add(verticalLine);
     scene.object3D.add(normalLine);
+    scene.object3D.add(normalLine1);
+    scene.object3D.add(normalLine2);
+    scene.object3D.add(normalLine3);
+    scene.object3D.add(normalLine4);
 
     // Update function called each frame
     const updatePlane = () => {
@@ -69,6 +98,10 @@ export default function App() {
         debugLine.visible = false;
         verticalLine.visible = false;
         normalLine.visible = false;
+        normalLine1.visible = false;
+        normalLine2.visible = false;
+        normalLine3.visible = false;
+        normalLine4.visible = false;
         requestAnimationFrame(updatePlane);
         return;
       }
@@ -77,6 +110,10 @@ export default function App() {
       debugLine.visible = true;
       verticalLine.visible = true;
       normalLine.visible = true;
+      normalLine1.visible = true;
+      normalLine2.visible = true;
+      normalLine3.visible = true;
+      normalLine4.visible = true;
 
       const [marker32, marker34, marker36, marker38] = markers;
       const p32 = new THREE.Vector3().setFromMatrixPosition(marker32.object3D.matrixWorld);
@@ -183,6 +220,57 @@ export default function App() {
 
       normalLine.material.color.set(0x0000ff);
 
+      // Draw normal vectors at each corner
+      const cornerNormalLength = Math.min(width, height) * 0.3;
+
+      // Normal at p34 (corner 1)
+      const normalEnd1 = p34.clone().addScaledVector(normal1, cornerNormalLength);
+      normalPositions1[0] = p34.x;
+      normalPositions1[1] = p34.y;
+      normalPositions1[2] = p34.z;
+      normalPositions1[3] = normalEnd1.x;
+      normalPositions1[4] = normalEnd1.y;
+      normalPositions1[5] = normalEnd1.z;
+      normalLine1.geometry.attributes.position.needsUpdate = true;
+      normalLine1.geometry.computeBoundingSphere();
+      normalLine1.material.color.set(0x00ffff); // cyan
+
+      // Normal at p36 (corner 2)
+      const normalEnd2 = p36.clone().addScaledVector(normal2, cornerNormalLength);
+      normalPositions2[0] = p36.x;
+      normalPositions2[1] = p36.y;
+      normalPositions2[2] = p36.z;
+      normalPositions2[3] = normalEnd2.x;
+      normalPositions2[4] = normalEnd2.y;
+      normalPositions2[5] = normalEnd2.z;
+      normalLine2.geometry.attributes.position.needsUpdate = true;
+      normalLine2.geometry.computeBoundingSphere();
+      normalLine2.material.color.set(0xff00ff); // magenta
+
+      // Normal at p32 (corner 3)
+      const normalEnd3 = p32.clone().addScaledVector(normal3, cornerNormalLength);
+      normalPositions3[0] = p32.x;
+      normalPositions3[1] = p32.y;
+      normalPositions3[2] = p32.z;
+      normalPositions3[3] = normalEnd3.x;
+      normalPositions3[4] = normalEnd3.y;
+      normalPositions3[5] = normalEnd3.z;
+      normalLine3.geometry.attributes.position.needsUpdate = true;
+      normalLine3.geometry.computeBoundingSphere();
+      normalLine3.material.color.set(0xffff00); // yellow
+
+      // Normal at p38 (corner 4)
+      const normalEnd4 = p38.clone().addScaledVector(normal4, cornerNormalLength);
+      normalPositions4[0] = p38.x;
+      normalPositions4[1] = p38.y;
+      normalPositions4[2] = p38.z;
+      normalPositions4[3] = normalEnd4.x;
+      normalPositions4[4] = normalEnd4.y;
+      normalPositions4[5] = normalEnd4.z;
+      normalLine4.geometry.attributes.position.needsUpdate = true;
+      normalLine4.geometry.computeBoundingSphere();
+      normalLine4.material.color.set(0xff8800); // orange
+
 
 
 
@@ -211,7 +299,7 @@ canvasHeight: 1920;
           arjs-anchor="changeMatrixMode: modelViewMatrix;" id="marker32">
           <a-entity
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
-            scale="1 1 1 " ></a-entity>
+            scale="0 0 0" ></a-entity>
 
 
         </a-marker>
@@ -220,28 +308,29 @@ canvasHeight: 1920;
           arjs-anchor="changeMatrixMode: modelViewMatrix;" id="marker34">
           <a-entity
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
-            scale="1 1 1 " ></a-entity>
+            scale="0 0 0" ></a-entity>
         </a-marker>
 
         <a-marker type="barcode" value="36" emitevents="true"
           arjs-anchor="changeMatrixMode: modelViewMatrix;" id="marker36">
           <a-entity
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
-            scale="1 1 1 " ></a-entity>
+            scale="0 0 0" ></a-entity>
         </a-marker>
 
         <a-marker type="barcode" value="38" emitevents="true"
           arjs-anchor="changeMatrixMode: modelViewMatrix;" id="marker38">
           <a-entity
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
-            scale="1 1 1 " ></a-entity>
+            scale="0 0 0" ></a-entity>
         </a-marker>
 
         <a-marker type="barcode" value="30" emitevents="true"
           arjs-anchor="changeMatrixMode: modelViewMatrix;">
           <a-entity
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/refs/heads/main/2.0/Duck/glTF/Duck.gltf)"
-            scale="1 1 1 " ></a-entity>
+            scale="2.5 2.5 2.5"
+            position="0 0.5 0"></a-entity>
         </a-marker>
 
 
