@@ -14,6 +14,7 @@ export default function GamePage() {
     const [joining, setJoining] = useState(false);
     const [joinError, setJoinError] = useState(null);
     const [joinName, setJoinName] = useState("");
+    const [userId, setUserId] = useState(null);
 
     useEffect(() => {
         async function fetchGameData() {
@@ -67,6 +68,22 @@ export default function GamePage() {
         fetchGameData();
     }, [gameId]);
 
+    useEffect(() => {
+        // Get current user id from supabase session
+        async function fetchUser() {
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (error) throw error;
+                //console.log("Current user:", data?.user);
+                setUserId(data?.user?.id || null);
+            } catch (err) {
+                console.error("Failed to get user:", err);
+                setUserId(null);
+            }
+        }
+        fetchUser();
+    }, []);
+
     async function handleJoinGame(e) {
         e.preventDefault();
         setJoining(true);
@@ -93,7 +110,7 @@ export default function GamePage() {
             // Add player
             const { error: insertErr } = await supabase
                 .from("players")
-                .insert({ game_id: gameId, name: joinName.trim(), type: "HUMAN" });
+                .insert({ game_id: gameId, name: joinName.trim(), type: "HUMAN", user_id: userId || null });
             if (insertErr) throw insertErr;
             setJoinName("");
             // Refresh players list
@@ -107,6 +124,30 @@ export default function GamePage() {
         } finally {
             setJoining(false);
         }
+    }
+
+    async function handleLeaveGame() {
+        if (!userId) return;
+        // Remove player with this name and gameId (assuming name is unique per game)
+        // We'll use the supabase user id as the name for uniqueness if available
+        // But for now, let's let the user leave by deleting their player row if their name matches the session user id or name
+        // (You may want to store the mapping more robustly in production)
+        const myPlayer = players.find(p => p.name === userId || p.user_id === userId);
+        if (!myPlayer) return;
+        const { error: delErr } = await supabase
+            .from("players")
+            .delete()
+            .eq("id", myPlayer.id);
+        if (delErr) {
+            alert("Failed to leave game: " + delErr.message);
+            return;
+        }
+        // Refresh players list
+        const { data: playerData } = await supabase
+            .from("players")
+            .select("*")
+            .eq("game_id", gameId);
+        setPlayers(playerData);
     }
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading game...</div>;
@@ -143,6 +184,19 @@ export default function GamePage() {
                 </button>
                 {joinError && <span className="text-red-600 ml-2 text-sm">{joinError}</span>}
             </form>
+
+
+            {userId && players.some(p => p.name === userId || p.user_id === userId) && (
+
+                <div>
+                    <button
+                        onClick={handleLeaveGame}
+                        className="mb-6 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                    >
+                        Leave Game
+                    </button>
+                </div>
+            )}
             <div className="mb-8">
                 <h2 className="text-lg font-semibold mb-2">Players</h2>
                 <ul className="grid grid-cols-2 gap-2">
@@ -153,6 +207,7 @@ export default function GamePage() {
                     ))}
                 </ul>
             </div>
+
             <div>
                 <h2 className="text-lg font-semibold mb-2">Board Locations</h2>
                 <div className="overflow-x-auto">
