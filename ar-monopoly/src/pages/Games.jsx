@@ -42,12 +42,29 @@ export default function GamesPage() {
         e.preventDefault();
         setCreating(true);
         setError(null);
-        const { data, error } = await supabase.from('games').insert({ name: newGameName }).select();
+
+        // Call the new Supabase RPC function to create and seed the game
+        const { data, error } = await supabase.rpc('create_game_and_seed', {
+            p_game_name: newGameName,
+            p_board_size: 24 // Default board size
+        });
+
         if (error) {
             setError(error.message);
         } else {
-            setGames([data[0], ...games]);
-            setNewGameName("");
+            // The RPC returns the new game's ID. We need to fetch the full game object.
+            const { data: newGame, error: fetchError } = await supabase
+                .from('games')
+                .select('*')
+                .eq('id', data)
+                .single();
+
+            if (fetchError) {
+                setError(fetchError.message);
+            } else {
+                setGames([newGame, ...games]);
+                setNewGameName("");
+            }
         }
         setCreating(false);
     }
