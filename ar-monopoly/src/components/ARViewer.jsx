@@ -179,7 +179,7 @@ export default function App() {
       plane.setRotationFromMatrix(basis);
 
       // Plane geometry spans 1x1 by default; scale to match board dimensions
-      plane.scale.set(width, height, 1);
+      plane.scale.set(width * 1.20, height * 1.20, 1);
 
       // Update debug line: p34 -> p36 (top edge)
       linePositions[0] = p34.x;
@@ -287,6 +287,7 @@ export default function App() {
 
     <div>
       <a-scene
+
         ref={sceneRef}
         arjs="debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; sourceType: webcam; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080; trackingMethod: best; patternRatio: 0.4; minConfidence: 0.2; canvasWidth: 1080;
 canvasHeight: 1920;
@@ -331,6 +332,14 @@ canvasHeight: 1920;
             gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/refs/heads/main/2.0/Duck/glTF/Duck.gltf)"
             scale="2.5 2.5 2.5"
             position="0 0.5 0"></a-entity>
+        </a-marker>
+
+        <a-marker type="barcode" value="42" emitevents="true"
+          arjs-anchor="changeMatrixMode: modelViewMatrix;">
+          <a-entity
+            gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/refs/heads/main/2.0/ToyCar/glTF/ToyCar.gltf)"
+            scale="40 40 40"
+            position="0 2 0"></a-entity>
         </a-marker>
 
 

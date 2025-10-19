@@ -199,6 +199,71 @@ export default function GamePage() {
         fetchAllGameData();
     }, [fetchAllGameData]);
 
+    // Realtime subscriptions: keep UI in sync with DB changes
+    useEffect(() => {
+        if (!gameId) return;
+        // Supabase Realtime v2 channel API
+        const chan = supabase.channel(`public:game-${gameId}`);
+
+        // Helper to handle row changes and refresh local pieces
+        const handleChange = async (payload) => {
+            const { table } = payload;
+            // For simplicity, re-fetch the relevant data sets depending on table
+            try {
+                if (table === 'games') {
+                    const { data, error } = await supabase.from('games').select('*').eq('id', gameId).single();
+                    if (!error && data) setGame(data);
+                } else if (table === 'players') {
+                    const { data, error } = await supabase.from('players').select('*').eq('game_id', gameId).order('id');
+                    if (!error) setPlayers(data || []);
+                } else if (table === 'locations') {
+                    const { data, error } = await supabase.from('locations').select('*').eq('game_id', gameId).order('board_index');
+                    if (!error) setLocations(data || []);
+                } else if (table === 'location_actions' || table === 'actions') {
+                    // Re-fetch actions map
+                    const locationIds = locations.map(l => l.id);
+                    if (locationIds.length > 0) {
+                        const { data: locActsData, error: locActsError } = await supabase
+                            .from('location_actions')
+                            .select('location_id,actions:action_id(*)')
+                            .in('location_id', locationIds);
+                        if (!locActsError) {
+                            const actsMap = {};
+                            for (const la of locActsData) {
+                                if (!actsMap[la.location_id]) actsMap[la.location_id] = [];
+                                actsMap[la.location_id].push(la.actions);
+                            }
+                            setActions(actsMap);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Realtime handler error', err);
+            }
+        };
+
+        // Listen for changes on the public schema tables relevant to this game
+        chan.on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameId}` }, (payload) => handleChange({ ...payload, table: 'games' }));
+        chan.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameId}` }, (payload) => handleChange({ ...payload, table: 'players' }));
+        chan.on('postgres_changes', { event: '*', schema: 'public', table: 'locations', filter: `game_id=eq.${gameId}` }, (payload) => handleChange({ ...payload, table: 'locations' }));
+        chan.on('postgres_changes', { event: '*', schema: 'public', table: 'location_actions' }, (payload) => handleChange({ ...payload, table: 'location_actions' }));
+
+        // Subscribe the channel
+        chan.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('Realtime channel subscribed for game', gameId);
+            }
+        });
+
+        return () => {
+            try {
+                chan.unsubscribe();
+            } catch (e) {
+                console.warn('Failed to unsubscribe realtime channel', e);
+            }
+        };
+    }, [gameId, locations]);
+
     useEffect(() => {
         if (players.length > 0) {
             fetchPlayerVitals();
@@ -355,21 +420,19 @@ export default function GamePage() {
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     <button
                         onClick={() => setActiveTab('game')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'game'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'game'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
                     >
                         Game Board
                     </button>
                     <button
                         onClick={() => setActiveTab('ar')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'ar'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'ar'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
                     >
                         AR View
                     </button>
@@ -379,7 +442,7 @@ export default function GamePage() {
             {/* Tab Content */}
             <div>
                 {activeTab === 'game' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-white">
                         {/* Left Column: Game Info & Controls */}
                         <div className="lg:col-span-1 space-y-6">
                             <div>
