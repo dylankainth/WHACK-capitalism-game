@@ -1,0 +1,228 @@
+import { useEffect, useMemo } from 'react'
+
+function registerSmoothingComponent() {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const { AFRAME, THREE: globalThree } = window
+  if (!AFRAME || AFRAME.components['lerp-smoothing']) {
+    return
+  }
+  const three = AFRAME.THREE || globalThree
+  if (!three) {
+    return
+  }
+  AFRAME.registerComponent('lerp-smoothing', {
+    schema: {
+      enabled: { type: 'boolean', default: true },
+      positionLerp: { type: 'number', default: 8 },
+      rotationLerp: { type: 'number', default: 8 },
+      scaleLerp: { type: 'number', default: 8 },
+      maxTranslationDelta: { type: 'number', default: 0.5 },
+      maxRotationDelta: { type: 'number', default: 45 },
+      maxScaleDelta: { type: 'number', default: 0.5 }
+    },
+    init() {
+      this.three = three
+      this.markerVisible = false
+      this.smoothedPosition = new three.Vector3()
+      this.smoothedQuaternion = new three.Quaternion()
+      this.smoothedScale = new three.Vector3(1, 1, 1)
+      this.targetPosition = new three.Vector3()
+      this.targetQuaternion = new three.Quaternion()
+      this.targetScale = new three.Vector3(1, 1, 1)
+      this.onFound = () => {
+        this.markerVisible = true
+        const obj = this.el.object3D
+        this.smoothedPosition.copy(obj.position)
+        this.smoothedQuaternion.copy(obj.quaternion)
+        this.smoothedScale.copy(obj.scale)
+      }
+      this.onLost = () => {
+        this.markerVisible = false
+      }
+      this.el.addEventListener('markerFound', this.onFound)
+      this.el.addEventListener('markerLost', this.onLost)
+    },
+    remove() {
+      this.el.removeEventListener('markerFound', this.onFound)
+      this.el.removeEventListener('markerLost', this.onLost)
+    },
+    tick(_time, dt) {
+      if (!this.data.enabled || !this.markerVisible) {
+        return
+      }
+      const obj = this.el.object3D
+      const { MathUtils } = this.three
+      const deltaSeconds = Math.max(dt, 0) / 1000
+      const positionStep = Math.min(1, deltaSeconds * this.data.positionLerp)
+      const rotationStep = Math.min(1, deltaSeconds * this.data.rotationLerp)
+      const scaleStep = Math.min(1, deltaSeconds * this.data.scaleLerp)
+      this.targetPosition.copy(obj.position)
+      this.targetQuaternion.copy(obj.quaternion)
+      this.targetScale.copy(obj.scale)
+      if (this.data.maxTranslationDelta > 0) {
+        if (this.targetPosition.distanceTo(this.smoothedPosition) > this.data.maxTranslationDelta) {
+          this.smoothedPosition.copy(this.targetPosition)
+        }
+      }
+      if (this.data.maxRotationDelta > 0) {
+        const angle = this.smoothedQuaternion.angleTo(this.targetQuaternion)
+        if (MathUtils.radToDeg(angle) > this.data.maxRotationDelta) {
+          this.smoothedQuaternion.copy(this.targetQuaternion)
+        }
+      }
+      if (this.data.maxScaleDelta > 0) {
+        if (this.targetScale.distanceTo(this.smoothedScale) > this.data.maxScaleDelta) {
+          this.smoothedScale.copy(this.targetScale)
+        }
+      }
+      this.smoothedPosition.lerp(this.targetPosition, positionStep)
+      this.smoothedQuaternion.slerp(this.targetQuaternion, rotationStep)
+      this.smoothedScale.lerp(this.targetScale, scaleStep)
+      obj.position.copy(this.smoothedPosition)
+      obj.quaternion.copy(this.smoothedQuaternion)
+      obj.scale.copy(this.smoothedScale)
+    }
+  })
+}
+
+export default function App() {
+  useEffect(() => {
+    registerSmoothingComponent()
+
+    // Silence deprecated markersAreaEnabled warnings from AR.js
+    const { THREEx } = window
+    if (THREEx?.ArMarkerControls && !THREEx.ArMarkerControls.__patched) {
+      const originalSetParameters = THREEx.ArMarkerControls.prototype.setParameters
+      THREEx.ArMarkerControls.prototype.setParameters = function patchedSetParameters(params = {}) {
+        // markersAreaEnabled is no longer supported; strip it to avoid console warnings
+        if ('markersAreaEnabled' in params) {
+          delete params.markersAreaEnabled
+        }
+        return originalSetParameters.call(this, params)
+      }
+      THREEx.ArMarkerControls.__patched = true
+    }
+
+    // Ensure AR.js Canvas2D contexts use willReadFrequently where possible
+    if (THREEx?.ArToolkitSource && !THREEx.ArToolkitSource.__patchedContext) {
+      const originalGetContext = THREEx.ArToolkitSource.prototype._getContext
+      if (originalGetContext) {
+        THREEx.ArToolkitSource.prototype._getContext = function patchedGetContext() {
+          const context = originalGetContext.apply(this, arguments)
+          if (context && context.getContext) {
+            const canvas = context
+            const existing = canvas.__willReadFrequentlyApplied
+            if (!existing) {
+              const newCtx = canvas.getContext('2d', { willReadFrequently: true })
+              if (newCtx) {
+                canvas.__willReadFrequentlyApplied = true
+                return newCtx
+              }
+            }
+          }
+          return context
+        }
+        THREEx.ArToolkitSource.__patchedContext = true
+      }
+    }
+  }, [])
+
+  const sceneConfig = useMemo(
+    () =>
+      'debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; trackingMethod: best; sourceType: webcam; sourceWidth: 1920; sourceHeight: 1080; displayWidth: 1920; displayHeight: 1080; minConfidence: 0.1; maxDetectionRate: 60; smooth: true; smoothCount: 15; smoothTolerance: 0.01; smoothThreshold: 0.04;',
+    []
+  )
+
+  const rendererConfig = useMemo(
+    () =>
+      'antialias: true; colorManagement: true; precision: highp; logarithmicDepthBuffer: true; physicallyCorrectLights: true;',
+    []
+  )
+
+  const markerSmoothing = useMemo(
+    () => 'positionLerp: 10; rotationLerp: 12; maxTranslationDelta: 0.6;',
+    []
+  )
+
+  return (
+    <div className="App">
+      <h2>React AR JS</h2>
+      <div>
+        <a-scene
+          embedded
+          vr-mode-ui="enabled: false"
+          renderer={rendererConfig}
+          arjs={sceneConfig}
+        >
+          <a-marker preset="hiro" emitevents="true" lerp-smoothing>
+            <a-box color="#0000FF" material="opacity:0.5"></a-box>
+          </a-marker>
+
+          <a-marker
+            type="barcode"
+            value="30"
+            emitevents="true"
+            lerp-smoothing={markerSmoothing}
+          >
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/refs/heads/main/2.0/Duck/glTF/Duck.gltf)"
+              scale="1 1 1"
+            ></a-entity>
+          </a-marker>
+
+          <a-marker
+            type="barcode"
+            value="32"
+            emitevents="true"
+            lerp-smoothing={markerSmoothing}
+          >
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+              scale="1 1 1"
+            ></a-entity>
+          </a-marker>
+
+          <a-marker
+            type="barcode"
+            value="34"
+            emitevents="true"
+            lerp-smoothing={markerSmoothing}
+          >
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+              scale="1 1 1"
+            ></a-entity>
+          </a-marker>
+
+          <a-marker
+            type="barcode"
+            value="36"
+            emitevents="true"
+            lerp-smoothing={markerSmoothing}
+          >
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+              scale="1 1 1"
+            ></a-entity>
+          </a-marker>
+
+          <a-marker
+            type="barcode"
+            value="38"
+            emitevents="true"
+            lerp-smoothing={markerSmoothing}
+          >
+            <a-entity
+              gltf-model="url(https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/refs/heads/main/Models/Box/glTF/Box.gltf)"
+              scale="1 1 1"
+            ></a-entity>
+          </a-marker>
+
+          <a-entity camera></a-entity>
+        </a-scene>
+      </div>
+    </div>
+  )
+}
